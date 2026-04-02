@@ -85,23 +85,19 @@ implemented:
 3. Clean and build the project (this will also run the test suite):
    ```bash
    mvn clean install
-   4. Start the application:
-      mvn spring-boot:run
-   The application will start on http://localhost:8080. Upon startup, the database is automatically seeded with test data via the schema.sql and data.sql scripts located in src/main/resources.
+4. Start the application:
+   mvn spring-boot:run
+   The application will start on http://localhost:8080. Upon startup, the database is automatically seeded with test
+   data via the schema.sql and data.sql scripts located in src/main/resources.
 
 Accessing the Database
 You can view the raw transaction data currently loaded into the system using the H2 Web Console.
-
 Navigate to: http://localhost:8080/h2-console
 
 Enter the following credentials:
-
 JDBC URL: jdbc:h2:mem:rewarddb
-
 User Name: sa
-
 Password: password
-
 Click Connect and run SELECT * FROM TRANSACTIONS; to view the seeded data.
 
 API Documentation (Inputs & Outputs)
@@ -114,13 +110,10 @@ Input Method: GET
 
 Input URL: http://localhost:8080/api/rewards/101
 
-cURL Command:
-
-Bash
 curl -X GET http://localhost:8080/api/rewards/101 -H "Accept: application/json"
+
 Output Response (200 OK):
 
-JSON
 {
 "customerId": 101,
 "monthlyRewardAmount": {
@@ -137,13 +130,10 @@ Input Method: GET
 
 Input URL: http://localhost:8080/api/rewards/999
 
-cURL Command:
-
-Bash
 curl -X GET http://localhost:8080/api/rewards/999 -H "Accept: application/json"
+
 Output Response (404 Not Found):
 
-JSON
 {
 "message": "No transactions found for customer ID: 999",
 "error": "Not Found",
@@ -157,13 +147,9 @@ Input Method: GET
 
 Input URL: http://localhost:8080/api/rewards
 
-cURL Command:
-
-Bash
 curl -X GET http://localhost:8080/api/rewards -H "Accept: application/json"
 Output Response (200 OK):
 
-JSON
 [
 {
 "customerId": 101,
@@ -186,6 +172,7 @@ JSON
 "totalRewardAmount": 50.00
 }
 ]
+
 Testing Strategy
 The project contains a comprehensive test suite utilizing JUnit 5 and Mockito, strictly separating web-layer testing
 from data-layer testing to ensure fast feedback loops and robust integration validation.
@@ -201,5 +188,4 @@ scripts against the H2 database, and verify the entire data flow from HTTP reque
 
 To execute the test suite:
 
-Bash
 mvn test
