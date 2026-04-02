@@ -1,30 +1,24 @@
 package com.retail.reward.exception;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 
-import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Global exception handler to format API error responses consistently.
- */
 @ControllerAdvice
 public class GlobalExceptionHandler {
 
-    /**
-     * Handles CustomerNotFoundException and returns a 404 Not Found response.
-     *
-     * @param ex The thrown exception.
-     * @return Formatted JSON error response.
-     */
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
     @ExceptionHandler(CustomerNotFoundException.class)
-    public ResponseEntity<Object> handleCustomerNotFoundException(CustomerNotFoundException ex) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("timestamp", LocalDateTime.now());
+    public ResponseEntity<Map<String, Object>> handleCustomerNotFound(CustomerNotFoundException ex) {
+        log.warn("Customer not found: {}", ex.getMessage());
+        Map<String, Object> body = new HashMap<>();
         body.put("status", HttpStatus.NOT_FOUND.value());
         body.put("error", "Not Found");
         body.put("message", ex.getMessage());

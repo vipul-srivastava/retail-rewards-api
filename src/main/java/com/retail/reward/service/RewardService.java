@@ -1,134 +1,113 @@
 package com.retail.reward.service;
 
+import com.retail.reward.entity.TransactionEntity;
 import com.retail.reward.exception.CustomerNotFoundException;
 import com.retail.reward.model.RewardSummary;
 import com.retail.reward.model.Transaction;
+import com.retail.reward.repository.TransactionRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
-import java.util.*;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.YearMonth;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * Service class responsible for processing transactions and calculating reward points.
- */
 @Service
 public class RewardService {
 
-    private static final int REWARD_LIMIT_TIER_1 = 50;
-    private static final int REWARD_LIMIT_TIER_2 = 100;
+    private final TransactionRepository transactionRepository;
 
-    private final List<Transaction> transactions;
+    @Value("${reward.threshold.tier1}")
+    private BigDecimal tier1Limit;
 
-    /**
-     * Initializes the service with a mock dataset spanning a 3-month period.
-     */
-    public RewardService() {
-        this.transactions = initializeMockData();
+    @Value("${reward.threshold.tier2}")
+    private BigDecimal tier2Limit;
+
+    @Value("${reward.multiplier.tier2}")
+    private BigDecimal tier2Multiplier;
+
+    public RewardService(TransactionRepository transactionRepository) {
+        this.transactionRepository = transactionRepository;
     }
 
-    /**
-     * Calculates reward points for all customers in the system.
-     *
-     * @return A list of RewardSummary objects for each customer.
-     */
     public List<RewardSummary> calculateAllRewards() {
-        Map<Long, List<Transaction>> transactionsByCustomer = transactions.stream()
+        List<Transaction> allTransactions = transactionRepository.findAll().stream()
+                .map(this::mapToDomain)
+                .toList();
+
+        Map<Long, List<Transaction>> transactionsByCustomer = allTransactions.stream()
                 .collect(Collectors.groupingBy(Transaction::customerId));
 
         return transactionsByCustomer.entrySet().stream()
                 .map(entry -> calculateRewardsForCustomer(entry.getKey(), entry.getValue()))
-                .collect(Collectors.toList());
+                .toList();
     }
 
-    /**
-     * Calculates reward points for a specific customer ID.
-     *
-     * @param customerId The ID of the customer.
-     * @return RewardSummary object containing monthly and total points.
-     * @throws CustomerNotFoundException if no transactions exist for the customer.
-     */
     public RewardSummary getRewardsByCustomerId(Long customerId) {
-        List<Transaction> customerTransactions = transactions.stream()
-                .filter(t -> t.customerId().equals(customerId))
-                .collect(Collectors.toList());
+        List<TransactionEntity> entities = transactionRepository.findByCustomerId(customerId);
 
-        if (customerTransactions.isEmpty()) {
+        if (entities.isEmpty()) {
             throw new CustomerNotFoundException("No transactions found for customer ID: " + customerId);
         }
 
-        return calculateRewardsForCustomer(customerId, customerTransactions);
+        List<Transaction> transactions = entities.stream()
+                .map(this::mapToDomain)
+                .toList();
+
+        return calculateRewardsForCustomer(customerId, transactions);
     }
 
-    /**
-     * Core logic to calculate points and group them by month.
-     *
-     * @param customerId           The customer ID.
-     * @param customerTransactions The list of transactions for the customer.
-     * @return The aggregated RewardSummary.
-     */
     private RewardSummary calculateRewardsForCustomer(Long customerId, List<Transaction> customerTransactions) {
-        Map<String, Integer> monthlyPoints = new HashMap<>();
-        int totalPoints = 0;
+        Map<String, BigDecimal> monthlyRewardAmount = new HashMap<>();
+        BigDecimal totalRewardAmount = BigDecimal.ZERO;
 
         for (Transaction transaction : customerTransactions) {
-            int points = calculatePoints(transaction.amount());
-            if (points > 0) {
-                // Fulfills Requirement: "Do not hard code the months"
-                String monthName = transaction.transactionDate().getMonth().name();
-                monthlyPoints.put(monthName, monthlyPoints.getOrDefault(monthName, 0) + points);
-                totalPoints += points;
+            BigDecimal rewardAmount = calculateRewardAmount(transaction.amount());
+
+            if (rewardAmount.compareTo(BigDecimal.ZERO) > 0) {
+                String monthKey = YearMonth.from(transaction.transactionDate()).toString();
+
+                BigDecimal currentMonthTotal = monthlyRewardAmount.getOrDefault(monthKey, BigDecimal.ZERO);
+                monthlyRewardAmount.put(monthKey, currentMonthTotal.add(rewardAmount));
+
+                totalRewardAmount = totalRewardAmount.add(rewardAmount);
             }
         }
-        return new RewardSummary(customerId, monthlyPoints, totalPoints);
+        return new RewardSummary(customerId, monthlyRewardAmount, totalRewardAmount);
     }
 
-    /**
-     * Applies the mathematical formula for reward points based on the transaction amount.
-     *
-     * @param amount The transaction amount.
-     * @return The calculated reward points.
-     */
-    public int calculatePoints(Double amount) {
-        if (amount == null || amount <= REWARD_LIMIT_TIER_1) {
-            return 0;
+    public BigDecimal calculateRewardAmount(BigDecimal transactionAmount) {
+        if (transactionAmount == null || transactionAmount.compareTo(tier1Limit) <= 0) {
+            return BigDecimal.ZERO;
         }
 
-        int points = 0;
-        int truncatedAmount = amount.intValue();
+        BigDecimal reward = BigDecimal.ZERO;
+        BigDecimal calculableAmount = transactionAmount.setScale(0, RoundingMode.DOWN);
 
-        if (truncatedAmount > REWARD_LIMIT_TIER_2) {
-            points += (truncatedAmount - REWARD_LIMIT_TIER_2) * 2;
-            points += REWARD_LIMIT_TIER_1;
+        if (calculableAmount.compareTo(tier2Limit) > 0) {
+            BigDecimal overTier2 = calculableAmount.subtract(tier2Limit);
+            reward = reward.add(overTier2.multiply(tier2Multiplier));
+
+            BigDecimal tier1MaxAmount = tier2Limit.subtract(tier1Limit);
+            reward = reward.add(tier1MaxAmount);
         } else {
-            points += (truncatedAmount - REWARD_LIMIT_TIER_1);
+            BigDecimal overTier1 = calculableAmount.subtract(tier1Limit);
+            reward = reward.add(overTier1);
         }
 
-        return points;
+        return reward;
     }
 
-    /**
-     * Generates a mock dataset demonstrating multiple customers and transactions over 3 months.
-     *
-     * @return A list of populated transactions.
-     */
-    private List<Transaction> initializeMockData() {
-        LocalDate currentMonth = LocalDate.now();
-        LocalDate lastMonth = currentMonth.minusMonths(1);
-        LocalDate twoMonthsAgo = currentMonth.minusMonths(2);
-
-        return Arrays.asList(
-                // Customer 101 - Multiple transactions across 3 months
-                new Transaction(1L, 101L, 120.0, currentMonth),     // 90 points
-                new Transaction(2L, 101L, 80.0, currentMonth),      // 30 points
-                new Transaction(3L, 101L, 50.0, lastMonth),         // 0 points
-                new Transaction(4L, 101L, 150.0, twoMonthsAgo),     // 150 points
-
-                // Customer 102 - Negative scenario setup
-                new Transaction(5L, 102L, 40.0, currentMonth),      // 0 points
-
-                // Customer 103 - Exact edge case values
-                new Transaction(6L, 103L, 100.0, lastMonth)         // 50 points
+    private Transaction mapToDomain(TransactionEntity entity) {
+        return new Transaction(
+                entity.getId(),
+                entity.getCustomerId(),
+                entity.getAmount(),
+                entity.getTransactionDate()
         );
     }
 }
