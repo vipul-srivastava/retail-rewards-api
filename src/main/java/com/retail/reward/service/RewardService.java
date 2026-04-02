@@ -63,7 +63,7 @@ public class RewardService {
     /**
      * Core logic to calculate points and group them by month.
      *
-     * @param customerId The customer ID.
+     * @param customerId           The customer ID.
      * @param customerTransactions The list of transactions for the customer.
      * @return The aggregated RewardSummary.
      */
